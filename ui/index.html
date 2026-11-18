@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Remote Command Runner</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #ebf0f7;
+      font-family: 'Malgun Gothic', 'Segoe UI', sans-serif;
+      font-size: 13px;
+      height: 100vh;
+      overflow: hidden;
+      user-select: auto;
+    }
+
+    .layout {
+      display: flex;
+      gap: 8px;
+      padding: 8px;
+      height: 100vh;
+    }
+
+    /* ── Left panel ───────────────────────────────── */
+    .left {
+      width: 310px;
+      min-width: 310px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    /* ── Right panel ──────────────────────────────── */
+    .right {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── Card ─────────────────────────────────────── */
+    .card {
+      background: #fff;
+      border: 1px solid #c8d7e6;
+      border-radius: 6px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .card-header {
+      background: #1e3750;
+      color: #fff;
+      height: 30px;
+      padding: 0 10px;
+      display: flex;
+      align-items: center;
+      font-size: 13px;
+      flex-shrink: 0;
+    }
+
+    /* ── List items (servers / commands) ──────────── */
+    .card-list {
+      overflow-y: auto;
+      flex: 1;
+      padding: 4px 0;
+    }
+
+    .list-item {
+      height: 24px;
+      padding: 0 10px;
+      display: flex;
+      align-items: center;
+      cursor: pointer;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      color: #2c3e50;
+    }
+
+    .list-item:hover:not(.selected) { background: #e8f0f8; color: #1e3750; }
+    .list-item.selected             { background: #1e3750; color: #fff; }
+
+    /* ── Servers (fixed height ~8 rows) ───────────── */
+    .servers-card .card-list { max-height: 200px; min-height: 200px; }
+
+    /* ── Commands (fill remaining space) ──────────── */
+    .commands-card { flex: 1; }
+
+    /* ── Button row ───────────────────────────────── */
+    .btn-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+
+    .btn {
+      height: 36px;
+      border: none;
+      border-radius: 6px;
+      color: #fff;
+      font-size: 14px;
+      font-family: inherit;
+      cursor: pointer;
+      box-shadow: 2px 3px 0 rgba(0,0,0,.24);
+      transition: background .1s, box-shadow .1s, transform .1s;
+      outline: none;
+    }
+    .btn:active:not(:disabled) { box-shadow: none; transform: translate(1px,1px); }
+
+    .btn-execute { width: 130px; background: #2980b9; }
+    .btn-execute:hover:not(:disabled) { background: #3498db; }
+    .btn-clear   { width: 100px; background: #6c757d; }
+    .btn-clear:hover { background: #7d868e; }
+    .btn:disabled { background: #969ba2; cursor: not-allowed; box-shadow: none; }
+
+    /* ── Spinner ──────────────────────────────────── */
+    .spinner { display: none; align-items: center; gap: 6px; color: #505050; }
+    .spinner.visible { display: flex; }
+    .spin-ring {
+      width: 16px; height: 16px;
+      border: 2px solid #ccc;
+      border-top-color: #1e3750;
+      border-radius: 50%;
+      animation: spin .8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Output panel ─────────────────────────────── */
+    .output-card { flex: 1; min-height: 0; }
+
+    /* Single scrollbar lives HERE, not on the pre */
+    .output-scroll {
+      flex: 1;
+      overflow-y: auto;
+      padding: 6px 8px;
+      min-height: 0;
+      background: #fff;
+    }
+
+    #output {
+      font-family: 'Consolas', 'Malgun Gothic', monospace;
+      font-size: 12px;
+      line-height: 1.5;
+      color: #1a1a2e;
+      white-space: pre-wrap;
+      word-break: break-all;
+      margin: 0;
+      user-select: text;
+    }
+  </style>
+</head>
+<body>
+<div class="layout">
+
+  <!-- ── Left ──────────────────────────────────── -->
+  <div class="left">
+
+    <div class="card servers-card">
+      <div class="card-header">Servers</div>
+      <div class="card-list" id="server-list"></div>
+    </div>
+
+    <div class="card commands-card">
+      <div class="card-header">Commands</div>
+      <div class="card-list" id="command-list"></div>
+    </div>
+
+    <div class="btn-row">
+      <button class="btn btn-execute" id="btn-execute" disabled>&#9654;&#160; Execute</button>
+      <button class="btn btn-clear"   id="btn-clear">&#10005;&#160; Clear</button>
+      <div class="spinner" id="spinner">
+        <div class="spin-ring"></div>
+        <span>Running...</span>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ── Right ─────────────────────────────────── -->
+  <div class="right">
+    <div class="card output-card">
+      <div class="card-header">Output</div>
+      <!-- 스크롤은 이 div 하나만 담당 -->
+      <div class="output-scroll" id="output-scroll">
+        <pre id="output"></pre>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  const invoke = (...a) => window.__TAURI__.core.invoke(...a);
+  const listen  = (...a) => window.__TAURI__.event.listen(...a);
+
+  // ── ANSI 256-color → CSS color ─────────────────
+  function ansi256(n) {
+    if (n < 16) {
+      const t = [
+        '#000','#a00','#0a0','#a50','#00a','#a0a','#0aa','#aaa',
+        '#555','#f55','#5f5','#ff5','#55f','#f5f','#5ff','#fff',
+      ];
+      return t[n];
+    }
+    if (n < 232) {
+      n -= 16;
+      const b = n % 6, g = Math.floor(n / 6) % 6, r = Math.floor(n / 36);
+      const c = v => v ? 55 + v * 40 : 0;
+      return `rgb(${c(r)},${c(g)},${c(b)})`;
+    }
+    const v = 8 + (n - 232) * 10;
+    return `rgb(${v},${v},${v})`;
+  }
+
+  // ── Escape HTML special chars ───────────────────
+  function esc(s) {
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  // ── ANSI escape → HTML spans ────────────────────
+  function ansiToHtml(raw) {
+    // ESC[ ... m  (SGR sequences)
+    const re = /\x1b\[([0-9;]*)m/g;
+    let html = '';
+    let last = 0;
+    let depth = 0;       // open <span> count
+    let match;
+
+    while ((match = re.exec(raw)) !== null) {
+      html += esc(raw.slice(last, match.index));
+      last = re.lastIndex;
+
+      const parts = match[1] === '' ? [0] : match[1].split(';').map(Number);
+      let i = 0;
+      while (i < parts.length) {
+        const c = parts[i];
+
+        if (c === 0) {
+          // Reset — close all open spans
+          if (depth) { html += '</span>'.repeat(depth); depth = 0; }
+
+        } else if (c === 1) {
+          html += '<span style="font-weight:bold">'; depth++;
+
+        } else if (c >= 30 && c <= 37) {
+          const clrs = ['#000','#c00','#0c0','#880','#00c','#c0c','#0cc','#ccc'];
+          html += `<span style="color:${clrs[c-30]}">`;  depth++;
+
+        } else if (c >= 90 && c <= 97) {
+          const clrs = ['#555','#f66','#6f6','#ff6','#66f','#f6f','#6ff','#fff'];
+          html += `<span style="color:${clrs[c-90]}">`;  depth++;
+
+        } else if (c === 38 && parts[i+1] === 5 && parts[i+2] !== undefined) {
+          html += `<span style="color:${ansi256(parts[i+2])}">`;  depth++;
+          i += 2;
+
+        } else if (c === 48 && parts[i+1] === 5 && parts[i+2] !== undefined) {
+          html += `<span style="background:${ansi256(parts[i+2])}">`;  depth++;
+          i += 2;
+
+        } else if (c === 38 && parts[i+1] === 2 &&
+                   parts[i+2] !== undefined && parts[i+3] !== undefined && parts[i+4] !== undefined) {
+          html += `<span style="color:rgb(${parts[i+2]},${parts[i+3]},${parts[i+4]})">`;  depth++;
+          i += 4;
+        }
+        i++;
+      }
+    }
+
+    html += esc(raw.slice(last));
+    if (depth) html += '</span>'.repeat(depth);
+    return html;
+  }
+
+  // ── State ───────────────────────────────────────
+  let selectedServer  = null;
+  let selectedCommand = null;
+  let running = false;
+
+  function updateExecBtn() {
+    document.getElementById('btn-execute').disabled =
+      !selectedServer || !selectedCommand || running;
+  }
+
+  function setRunning(val) {
+    running = val;
+    document.getElementById('spinner').classList.toggle('visible', val);
+    updateExecBtn();
+  }
+
+  function showOutput(raw) {
+    const pre    = document.getElementById('output');
+    const scroll = document.getElementById('output-scroll');
+    pre.innerHTML = ansiToHtml(raw);
+    scroll.scrollTop = scroll.scrollHeight;
+  }
+
+  // ── Config ──────────────────────────────────────
+  async function loadConfig() {
+    try {
+      const cfg = await invoke('get_config');
+
+      const sl = document.getElementById('server-list');
+      cfg.servers.forEach(s => {
+        const item = document.createElement('div');
+        item.className = 'list-item';
+        item.textContent = `  ${s.key} : ${s.host}`;
+        item.addEventListener('click', () => {
+          sl.querySelectorAll('.list-item').forEach(e => e.classList.remove('selected'));
+          item.classList.add('selected');
+          selectedServer = s;
+          updateExecBtn();
+        });
+        sl.appendChild(item);
+      });
+
+      const cl = document.getElementById('command-list');
+      cfg.commands.forEach(c => {
+        const item = document.createElement('div');
+        item.className = 'list-item';
+        item.textContent = `  ${c.name} : ${c.desc}`;
+        item.addEventListener('click', () => {
+          cl.querySelectorAll('.list-item').forEach(e => e.classList.remove('selected'));
+          item.classList.add('selected');
+          selectedCommand = c;
+          updateExecBtn();
+        });
+        cl.appendChild(item);
+      });
+
+    } catch (e) {
+      showOutput('Config load error:\n' + e);
+    }
+  }
+
+  // ── Events ──────────────────────────────────────
+  async function setupEvents() {
+    await listen('ssh-started',  ()   => setRunning(true));
+    await listen('ssh-output',   (ev) => showOutput(ev.payload));
+    await listen('ssh-error',    (ev) => showOutput('ERROR\n' + ev.payload));
+    await listen('ssh-finished', ()   => setRunning(false));
+  }
+
+  // ── Buttons ─────────────────────────────────────
+  document.getElementById('btn-execute').addEventListener('click', async () => {
+    if (!selectedServer || !selectedCommand || running) return;
+    document.getElementById('output').innerHTML = '';
+    try {
+      await invoke('execute_command', {
+        host:    selectedServer.host,
+        command: selectedCommand.cmd,
+      });
+    } catch (e) {
+      showOutput('Invoke error:\n' + e);
+      setRunning(false);
+    }
+  });
+
+  document.getElementById('btn-clear').addEventListener('click', () => {
+    document.getElementById('output').innerHTML = '';
+  });
+
+  // ── Init ────────────────────────────────────────
+  window.addEventListener('DOMContentLoaded', async () => {
+    await setupEvents();
+    await loadConfig();
+  });
+</script>
+</body>
+</html>

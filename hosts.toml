@@ -1,0 +1,73 @@
+[servers.AGSDEV01]
+host = "10.226.22.40"
+
+[servers.AGSDEV02]
+host = "10.226.22.22"
+
+[servers.AGSSTATE01]
+host = "10.226.22.41"
+
+[servers.AGSSTATE02]
+host = "10.226.22.23"
+
+[servers.AVA-A01]
+host = "10.226.22.32"
+
+[servers.AVA-A02]
+host = "10.226.22.34"
+
+[commands.a-chk_pool]
+name = "pool status"
+desc = "pool_status.sh"
+cmd = """
+cd /service/swarm/ags/admin;./pool_status.sh
+"""
+
+[commands.a-cl_sts]
+name = "DB cluster status"
+desc = "cluster_status.sh"
+cmd = """
+/service/swarm/ags/admin/cluster_status.sh
+"""
+
+[commands.a-pg_sts]
+name = "pg status"
+desc = "pg_status.sh"
+cmd = """
+/service/swarm/ags/admin/pg_status.sh
+"""
+
+[commands.a-pool_table]
+name = "pool table"
+desc = "table_pool.sh"
+cmd = """
+/service/swarm/ags/admin/table_pool.sh
+"""
+
+[commands.dsl]
+name = "dsl.sh"
+desc = "docker service status"
+cmd = """
+cd /service/swarm/ags/admin;./dsl.sh
+"""
+
+[commands.validate_yml]
+name = "validate_yml.sh"
+desc = "validate yaml file"
+cmd = """
+/service/swarm/ags/admin/validate_yml.sh docker-test.yml qa
+"""
+
+[commands.start_app]
+name = "up_app.sh"
+desc = "start app services"
+cmd = """
+/service/swarm/ags/up_app.sh
+"""
+
+[commands.stop_app]
+name = "stop_app.sh"
+desc = "stop app services"
+cmd = """
+/service/swarm/ags/stop_app.sh
+"""
